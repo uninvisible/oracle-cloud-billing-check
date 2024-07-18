@@ -1,0 +1,14 @@
+version: '3.8'
+
+services:
+  billing_checker:
+    image: oci-billing-checker:latest
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: oci-billing-checker
+    volumes:
+      - ./config:/app/config
+      - ./logs:/app/logs
+    env_file:
+      - .env

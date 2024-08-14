@@ -1,25 +1,28 @@
 # Use an official Python runtime as a parent image
 FROM python:3.9-slim
 
+# Install cron and any required packages
+RUN apt-get update && apt-get install -y cron && \
+    apt-get clean && \
+    rm -rf /var/lib/apt/lists/*
+
 # Set the working directory to /app
 WORKDIR /app
 
-# Copy the current directory contents into the container at /app
-COPY . .
+# Copy the requirements file first to leverage caching
+COPY requirements.txt .
 
 # Install any needed packages specified in requirements.txt
 RUN pip install --no-cache-dir -r requirements.txt
 
-# Install cron and any required packages
-RUN apt-get update && apt-get install -y cron nano && \
-    apt-get clean && \
-    rm -rf /var/lib/apt/lists/*
-
-# Make the Python scripts executable
-RUN chmod +x main.py
+# Copy the rest of the application code into the container at /app
+COPY . .
 
 # Ensure the logs directory exist
 RUN mkdir -p /app/logs
+
+# Make the Python scripts executable
+RUN chmod +x main.py
 
 # Configure cron job
 RUN echo "* * * * * /usr/local/bin/python /app/main.py >> /var/log/cron.log 2>&1" > /etc/cron.d/python-cron && \

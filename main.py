@@ -78,16 +78,34 @@ def fetch_usage_data(start_time, end_time):
         granularity="DAILY",
         is_aggregate_by_time=True,
     )
-    return usage_client.request_summarized_usages(
-        request_summarized_usages_details=usage_request
-    )
+    try:
+        response = usage_client.request_summarized_usages(
+            request_summarized_usages_details=usage_request
+        )
+        return response
+    except oci.exceptions.ServiceError as e:
+        error_message = f"⚠️ Oracle Cloud Billing - Service error occurred: {str(e)}"
+        logging.error(error_message)
+        send_telegram_message(error_message, log_group_id)
+        return None
+    except Exception as e:
+        error_message = f"⚠️ Oracle Cloud Billing - Unexpected error occurred: {str(e)}"
+        logging.error(error_message)
+        send_telegram_message(error_message, log_group_id)
+        return None
 
 
 def process_usage_data(usage_data):
     """Process the usage data and send alerts if necessary."""
+    if not usage_data or not usage_data.data.items:
+        logging.error("No usage data received or the data is malformed.")
+        send_telegram_message("⚠️ Oracle Cloud Billing - No usage data received or the data is malformed.", log_group_id)
+        return
+
     for item in usage_data.data.items:
         cost = item.computed_amount
         currency = item.currency
+
         if cost != 0:
             alert_message = (
                 "⚠️ Oracle Cloud Billing Alert!\n\n"
@@ -95,8 +113,7 @@ def process_usage_data(usage_data):
                 f"[Cost Management](https://cloud.oracle.com/account-management/cost-analysis?region={oci_config['region']})"
             )
             send_telegram_message(alert_message, chat_id, parse_mode="Markdown")
-        else:
-            logging.info(f"Cost: {cost} {currency}")
+        logging.info(f"Cost: {cost} {currency}")
 
 
 def check_billing_and_notify():
@@ -106,10 +123,6 @@ def check_billing_and_notify():
         end_time = get_end_of_current_day()
         usage_data = fetch_usage_data(start_time, end_time)
         process_usage_data(usage_data)
-    except oci.exceptions.ServiceError as e:
-        error_message = f"⚠️ Oracle Cloud Billing - Service error occurred: {str(e)}"
-        logging.error(error_message)
-        send_telegram_message(error_message, log_group_id)
     except requests.RequestException as e:
         error_message = f"⚠️ Oracle Cloud Billing - Request error occurred: {str(e)}"
         logging.error(error_message)

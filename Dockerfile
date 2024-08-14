@@ -18,8 +18,9 @@ RUN apt-get update && apt-get install -y cron nano && \
 # Make the Python scripts executable
 RUN chmod +x main.py
 
-# Ensure the logs directory exist
-RUN mkdir -p /app/logs
+# Ensure the logs directory exists and create a placeholder for the error counter file
+RUN mkdir -p /app/logs && \
+    echo '{"none_counter": 0, "last_error_time": null}' > /app/logs/error_counter.json
 
 # Configure cron job
 RUN echo "* * * * * /usr/local/bin/python /app/main.py >> /var/log/cron.log 2>&1" > /etc/cron.d/python-cron && \

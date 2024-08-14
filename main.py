@@ -2,6 +2,7 @@ import os
 import oci
 import requests
 import logging
+import json
 from dotenv import load_dotenv
 from datetime import datetime, timedelta, timezone
 
@@ -37,6 +38,28 @@ compartment_id = os.getenv("COMPARTMENT_ID")
 bot_token = os.getenv("TELEGRAM_BOT_TOKEN")
 chat_id = os.getenv("TELEGRAM_CHAT_ID")
 log_group_id = os.getenv("TELEGRAM_LOG_GROUP_ID")
+
+# Path for the error counter JSON file
+log_error_file_path = os.getenv("LOG_ERROR_FILE_PATH")
+
+
+def initialize_counter_file():
+    """Initialize the counter file if it doesn't exist."""
+    if not os.path.exists(log_error_file_path):
+        with open(log_error_file_path, "w") as file:
+            json.dump({"none_counter": 0, "last_error_time": None}, file)
+
+
+def read_counter_data():
+    """Read the counter data from the JSON file."""
+    with open(log_error_file_path, "r") as file:
+        return json.load(file)
+
+
+def write_counter_data(none_counter, last_error_time):
+    """Write the counter data to the JSON file."""
+    with open(log_error_file_path, "w") as file:
+        json.dump({"none_counter": none_counter, "last_error_time": last_error_time}, file)
 
 
 def get_start_of_current_day():
@@ -100,6 +123,14 @@ def log_and_notify_error(message, exception):
 
 def process_usage_data(usage_data):
     """Process the usage data and send alerts if necessary."""
+    # Initialize counter file if it doesn't exist
+    initialize_counter_file()
+
+    # Read current counter data
+    counter_data = read_counter_data()
+    none_counter = counter_data["none_counter"]
+    last_error_time = counter_data["last_error_time"]
+
     if not usage_data or not usage_data.data.items:
         logging.error("No usage data received or the data is malformed.")
         send_telegram_message("⚠️ Oracle Cloud Billing - No usage data received or the data is malformed.", log_group_id)
@@ -110,14 +141,24 @@ def process_usage_data(usage_data):
         currency = item.currency
 
         if cost is None:
-            # Treat None as an error and notify the log group
-            error_message = (
-                "⚠️ Oracle Cloud Billing - Error in retrieving cost data. "
-                "Received None instead of a valid cost value.\n\n"
-                "Please check the OCI API or your configuration."
-            )
+            # Increment the None counter and log the last error time
+            none_counter += 1
+            last_error_time = datetime.now(timezone.utc).isoformat()
             logging.error(f"Cost retrieval error: received None for cost. Data: {item}")
-            send_telegram_message(error_message, log_group_id)
+
+            # If None has occurred 30 times within the last hour, send a notification
+            if none_counter >= 30:
+                error_message = (
+                    "⚠️ Oracle Cloud Billing - Error in retrieving cost data. "
+                    "Received None 30 times within the last hour."
+                )
+                send_telegram_message(error_message, log_group_id)
+                # Reset the counter after sending the notification
+                none_counter = 0
+
+            # Write updated counter data back to the file
+            write_counter_data(none_counter, last_error_time)
+
         elif cost == 0:
             logging.info(f"Cost: {cost} {currency}")
         else:
@@ -127,7 +168,6 @@ def process_usage_data(usage_data):
                 f"[Cost Management](https://cloud.oracle.com/account-management/cost-analysis?region={oci_config['region']})"
             )
             send_telegram_message(alert_message, chat_id, parse_mode="Markdown")
-
 
 
 def check_billing_and_notify():

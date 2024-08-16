@@ -27,7 +27,7 @@ COPY --from=builder /usr/local/lib/python3.9/site-packages /usr/local/lib/python
 COPY --from=builder /usr/local/bin /usr/local/bin
 
 # Install cron and nano without updating cache
-RUN apt-get update && apt-get install -y --no-install-recommends cron nano && \
+RUN apt-get update && apt-get install -y --no-install-recommends cron && \
     apt-get clean && \
     rm -rf /var/lib/apt/lists/*
 

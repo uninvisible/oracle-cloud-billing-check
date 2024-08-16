@@ -20,6 +20,7 @@ OCI_FINGERPRINT=41:av:dd:11:12:13:14:15:aa:dd:ff:cc:22:cc:71:5a
 OCI_TENANCY=ocid1.tenancy.oc1..aasasdafsswc12312axalsdfsduskby5lmqsdfaoa
 OCI_REGION=eu-amsterdam-1
 OCI_KEY_FILE_PATH=/app/config/oci_private_key.pem
+LOG_ERROR_FILE_PATH=/app/logs/error_counter.json
 LOG_FILE_PATH=/app/logs/main.log
 TELEGRAM_BOT_TOKEN=12345678:AVBhhx5cRsdfkslsdfsdfsAAADSFADh7-hk
 TELEGRAM_CHAT_ID=12345678

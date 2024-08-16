@@ -1,7 +1,7 @@
 
 # Oracle Cloud Billing Checker
 
-This project monitors Oracle Cloud billing usage to ensure it remains within Always Free limits and sends alerts to a Telegram chat if the cost exceeds 0. It runs inside a Docker container with a cron job executing the script every minute.
+This project monitors Oracle Cloud billing usage to ensure it remains within Always Free limits and sends alerts to a Telegram chat if the cost exceeds 0. It runs inside a Docker container with a cron job executing the script every hour.
 
 ## Setup Instructions
 
@@ -51,99 +51,47 @@ Download your `oci_private_key.pem` file, rename it to `oci_private_key.pem`, an
 
 This script:
 
-1. Configures logging to console and to a folder.
+1. Configures logging to both console and a log file.
 2. Loads OCI configuration from environment variables.
 3. Initializes the `UsageapiClient` with the OCI configuration.
 4. Defines functions to get the start and end times of the current day in UTC.
-5. Sends messages via Telegram bot.
-6. Fetches and processes usage data from Oracle Cloud.
-7. Checks billing and sends notifications if any issues are detected.
+5. Sends messages via a Telegram bot.
+6. Fetches usage data from OCI and processes it.
+7. Sends alerts if usage exceeds limits or if there are consecutive errors.
 
 ### Dockerfile
 
-This Dockerfile:
+The Dockerfile is structured into two stages:
 
-1. Uses an official Python runtime as the parent image.
-2. Sets the working directory to `/app`.
-3. Copies the current directory contents into the container at `/app`.
-4. Installs the required packages specified in `requirements.txt`.
-5. Installs cron and nano.
-6. Ensures the logs directory exists.
-7. Creates a custom crontab file to run the Python script every minute.
-8. Runs the cron job when the container launches.
+1. **Builder Stage**:
+    - Installs Python dependencies and sets up the application.
+    - Configures cron to run the script every hour.
 
-```dockerfile
-FROM python:3.9-slim
+2. **Production Stage**:
+    - Copies the necessary files and dependencies from the builder stage.
+    - Sets up and runs the cron job in the foreground.
 
-WORKDIR /app
+### Updated Dockerfile Highlights
 
-COPY . .
+- Multi-stage build to reduce image size and improve build times.
+- Cron job frequency updated to run the script every hour.
+- Dependencies are installed in the builder stage and then copied to the final image.
 
-RUN pip install --no-cache-dir -r requirements.txt
+### Deployment
 
-RUN apt-get update && apt-get install -y cron nano &&     apt-get clean &&     rm -rf /var/lib/apt/lists/*
+To deploy the application, use Docker Compose or build the Docker image manually and run it. Ensure that your environment variables are correctly set up and that the `oci_private_key.pem` file is in the correct location.
 
-RUN chmod +x main.py
+#### Build and Run with Docker Compose
 
-RUN mkdir -p /app/logs
-
-RUN echo "* * * * * /usr/local/bin/python /app/main.py >> /var/log/cron.log 2>&1" > /etc/cron.d/python-cron && \
-    chmod 0644 /etc/cron.d/python-cron && \
-    crontab /etc/cron.d/python-cron
-
-RUN touch /var/log/cron.log
-
-CMD cron && tail -f /var/log/cron.log
+```sh
+docker-compose up --build -d
 ```
 
-### docker-compose.yaml
+#### Build and Run Manually
 
-Defines the Docker service:
-
-```yaml
-version: '3.8'
-
-services:
-  billing_checker:
-    image: oci-billing-checker:latest
-    build:
-      context: .
-      dockerfile: Dockerfile
-    container_name: oci-billing-checker
-    volumes:
-      - ./config:/app/config
-      - ./logs:/app/logs
-    env_file:
-      - .env
+```sh
+docker build -t oci-billing-checker .
+docker run -d --env-file .env oci-billing-checker
 ```
 
-### requirements.txt
-
-Necessary Python packages:
-
-```
-oci==2.129.2
-requests==2.32.3
-python-dotenv==1.0.1
-```
-
-## Running the Project
-
-1. **Ensure the `.env` file and `oci_private_key.pem` file are present**: Verify that the `.env` file is correctly filled and located in your project directory, and the `oci_private_key.pem` file is in the `config` directory.
-
-2. **Build the Docker image**: 
-   ```sh
-   docker compose build
-   ```
-
-3. **Run the Docker container**: 
-   ```sh
-   docker compose up -d
-   ```
-
-4. **Check logs**:
-   ```sh
-   docker compose logs -f
-   ```
-
-This project will continuously monitor your Oracle Cloud billing usage and send alerts to the specified Telegram chat if any charges are detected.
+This setup ensures that the billing checker runs efficiently with minimal overhead, and alerts are sent reliably based on the configured thresholds.

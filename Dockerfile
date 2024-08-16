@@ -22,8 +22,8 @@ RUN chmod +x main.py
 RUN mkdir -p /app/logs && \
     echo '{"none_counter": 0, "last_error_time": null}' > /app/logs/error_counter.json
 
-# Configure cron job
-RUN echo "* * * * * /usr/local/bin/python /app/main.py >> /var/log/cron.log 2>&1" > /etc/cron.d/python-cron && \
+# Configure cron job to run the script every hour
+RUN echo "0 * * * * /usr/local/bin/python /app/main.py >> /var/log/cron.log 2>&1" > /etc/cron.d/python-cron && \
     chmod 0644 /etc/cron.d/python-cron && \
     crontab /etc/cron.d/python-cron
 

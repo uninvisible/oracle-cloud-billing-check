@@ -130,45 +130,47 @@ def process_usage_data(usage_data):
     counter_data = read_counter_data()
     none_counter = counter_data["none_counter"]
     last_error_time = counter_data["last_error_time"]
-
+    
     if not usage_data or not usage_data.data.items:
         logging.error("No usage data received or the data is malformed.")
         send_telegram_message("⚠️ Oracle Cloud Billing - No usage data received or the data is malformed.", log_group_id)
-        return
+        none_counter += 1
+        last_error_time = datetime.now(timezone.utc).isoformat()
 
-    for item in usage_data.data.items:
-        cost = item.computed_amount
-        currency = item.currency
-
-        if cost is None:
-            # Increment the None counter and log the last error time
-            none_counter += 1
-            last_error_time = datetime.now(timezone.utc).isoformat()
-            logging.error(f"Cost retrieval error: received None for cost. Data: {item}")
-
-            # If None has occurred 30 times within the last hour, send a notification
-            if none_counter >= 30:
-                error_message = (
-                    "⚠️ Oracle Cloud Billing - Error in retrieving cost data. "
-                    "Received None 30 times within the last hour."
+    else:
+        for item in usage_data.data.items:
+            # Attempt to use computed_amount, fallback to attributed_cost
+            cost = item.computed_amount if item.computed_amount is not None else float(item.attributed_cost)
+            currency = item.currency
+            cost = None
+            if cost is None:
+                none_counter += 1
+                last_error_time = datetime.now(timezone.utc).isoformat()
+                logging.error(f"Cost retrieval error: received None for cost. Data: {item}")
+            elif cost == 0:
+                logging.info(f"Cost: {cost} {currency} (Zero cost)")
+                none_counter = 0  # Reset counter on successful data retrieval
+            else:
+                alert_message = (
+                    "⚠️ Oracle Cloud Billing Alert!\n\n"
+                    f"Cost is not zero. Cost: {cost} {currency}\n\n"
+                    f"[Cost Management](https://cloud.oracle.com/account-management/cost-analysis?region={oci_config['region']})"
                 )
-                send_telegram_message(error_message, log_group_id)
-                # Reset the counter after sending the notification
-                none_counter = 0
+                send_telegram_message(alert_message, chat_id, parse_mode="Markdown")
+                none_counter = 0  # Reset counter on successful data retrieval
 
-            # Write updated counter data back to the file
-            write_counter_data(none_counter, last_error_time)
+    # Write updated counter data back to the file
+    write_counter_data(none_counter, last_error_time)
 
-        elif cost == 0:
-            logging.info(f"Cost: {cost} {currency}")
-        else:
-            alert_message = (
-                "⚠️ Oracle Cloud Billing Alert!\n\n"
-                f"Cost is not zero. Cost: {cost} {currency}\n\n"
-                f"[Cost Management](https://cloud.oracle.com/account-management/cost-analysis?region={oci_config['region']})"
-            )
-            send_telegram_message(alert_message, chat_id, parse_mode="Markdown")
-
+    # Send notification if there have been 12 consecutive errors
+    if none_counter >= 12:
+        error_message = (
+            "⚠️ Oracle Cloud Billing - Error in retrieving cost data. "
+            "12 consecutive errors detected."
+        )
+        send_telegram_message(error_message, log_group_id)
+        none_counter = 0  # Reset counter after sending the notification
+        write_counter_data(none_counter, last_error_time)
 
 def check_billing_and_notify():
     """Main function to check billing and notify if there are any issues."""

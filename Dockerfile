@@ -1,19 +1,21 @@
-# Use an official Python runtime as a parent image
-FROM python:3.9-slim
+# Use a smaller official Python runtime as a parent image
+FROM python:3.9-alpine as base
+
+# Install build dependencies and cron
+RUN apk add --no-cache --virtual .build-deps gcc musl-dev libffi-dev \
+    && apk add --no-cache cron
 
 # Set the working directory to /app
 WORKDIR /app
 
-# Copy the current directory contents into the container at /app
-COPY . .
+# Copy only the requirements.txt first, to leverage Docker cache
+COPY requirements.txt .
 
 # Install any needed packages specified in requirements.txt
 RUN pip install --no-cache-dir -r requirements.txt
 
-# Install cron and any required packages
-RUN apt-get update && apt-get install -y cron nano && \
-    apt-get clean && \
-    rm -rf /var/lib/apt/lists/*
+# Copy the rest of the application code
+COPY . .
 
 # Make the Python scripts executable
 RUN chmod +x main.py
@@ -29,6 +31,15 @@ RUN echo "0 * * * * /usr/local/bin/python /app/main.py >> /var/log/cron.log 2>&1
 
 # Create the log file to be able to run tail
 RUN touch /var/log/cron.log
+
+# Run the cron in the foreground and tail the log file
+CMD cron && tail -f /var/log/cron.log
+
+# Final image
+FROM base as final
+
+# Remove build dependencies to reduce the image size
+RUN apk del .build-deps
 
 # Run the cron in the foreground and tail the log file
 CMD cron && tail -f /var/log/cron.log

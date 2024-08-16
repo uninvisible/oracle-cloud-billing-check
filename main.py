@@ -142,7 +142,6 @@ def process_usage_data(usage_data):
             # Attempt to use computed_amount, fallback to attributed_cost
             cost = item.computed_amount if item.computed_amount is not None else float(item.attributed_cost)
             currency = item.currency
-            cost = None
             if cost is None:
                 none_counter += 1
                 last_error_time = datetime.now(timezone.utc).isoformat()

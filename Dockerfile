@@ -19,8 +19,12 @@ FROM python:3.9-slim
 # Set the working directory
 WORKDIR /app
 
-# Copy the application and installed Python packages from the builder stage
+# Copy the application from the builder stage
 COPY --from=builder /app /app
+
+# Copy installed Python packages from the builder stage
+COPY --from=builder /usr/local/lib/python3.9/site-packages /usr/local/lib/python3.9/site-packages
+COPY --from=builder /usr/local/bin /usr/local/bin
 
 # Install cron and nano without updating cache
 RUN apt-get update && apt-get install -y --no-install-recommends cron nano && \

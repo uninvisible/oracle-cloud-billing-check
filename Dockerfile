@@ -1,45 +1,50 @@
-# Use a smaller official Python runtime as a parent image
-FROM python:3.9-alpine as base
+# Stage 1: Build stage
+FROM python:3.9-slim as builder
 
-# Install build dependencies and cron
-RUN apk add --no-cache --virtual .build-deps gcc musl-dev libffi-dev \
-    && apk add --no-cache cron
-
-# Set the working directory to /app
+# Set the working directory
 WORKDIR /app
 
-# Copy only the requirements.txt first, to leverage Docker cache
+# Copy only requirements.txt to leverage Docker cache
 COPY requirements.txt .
 
-# Install any needed packages specified in requirements.txt
+# Install the Python dependencies
 RUN pip install --no-cache-dir -r requirements.txt
 
-# Copy the rest of the application code
+# Copy the entire application to the image
 COPY . .
+
+# Install cron and any required packages in a single RUN command
+RUN apt-get update && apt-get install -y --no-install-recommends cron nano && \
+    apt-get clean && \
+    rm -rf /var/lib/apt/lists/*
 
 # Make the Python scripts executable
 RUN chmod +x main.py
 
-# Ensure the logs directory exists and create a placeholder for the error counter file
-RUN mkdir -p /app/logs && \
-    echo '{"none_counter": 0, "last_error_time": null}' > /app/logs/error_counter.json
+# Ensure the logs directory exists
+RUN mkdir -p /app/logs
 
-# Configure cron job to run the script every hour
-RUN echo "0 * * * * /usr/local/bin/python /app/main.py >> /var/log/cron.log 2>&1" > /etc/cron.d/python-cron && \
+# Configure cron job in one RUN command to reduce layers
+RUN echo "* * * * * /usr/local/bin/python /app/main.py >> /var/log/cron.log 2>&1" > /etc/cron.d/python-cron && \
     chmod 0644 /etc/cron.d/python-cron && \
-    crontab /etc/cron.d/python-cron
+    crontab /etc/cron.d/python-cron && \
+    touch /var/log/cron.log
 
-# Create the log file to be able to run tail
-RUN touch /var/log/cron.log
+# Stage 2: Production stage
+FROM python:3.9-slim
 
-# Run the cron in the foreground and tail the log file
-CMD cron && tail -f /var/log/cron.log
+# Set the working directory
+WORKDIR /app
 
-# Final image
-FROM base as final
+# Copy only necessary files from the builder stage
+COPY --from=builder /app /app
+COPY --from=builder /etc/cron.d/python-cron /etc/cron.d/python-cron
+COPY --from=builder /var/log/cron.log /var/log/cron.log
 
-# Remove build dependencies to reduce the image size
-RUN apk del .build-deps
+# Install cron and nano without updating cache
+RUN apt-get update && apt-get install -y --no-install-recommends cron nano && \
+    apt-get clean && \
+    rm -rf /var/lib/apt/lists/*
 
-# Run the cron in the foreground and tail the log file
-CMD cron && tail -f /var/log/cron.log
+# Run cron and also tail the log file to stdout
+CMD ["sh", "-c", "cron && tail -f /var/log/cron.log"]
